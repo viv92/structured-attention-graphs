@@ -4,7 +4,7 @@ Source code to generate SAGs [paper link]
 ### To run:
 `python main_generate_sag.py`
 
-### Directory structure:
+### Directory description:
 - combinatorial_search.py -- functions to perform combinatorial search on a perturbation mask
 - diverse_subset_selection.py -- functions to obtain a diverse subset from a set of candidate masks
 - get_perturbation_mask.py -- functions to obtain a perturbation mask
