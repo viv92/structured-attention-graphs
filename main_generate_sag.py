@@ -189,15 +189,10 @@ if __name__ == '__main__':
                         # add score footer
                         prob_score = np.around(ins_prob, decimals=3)
                         footer = "p: " + str(prob_score)
-                        # font
                         font = cv2.FONT_HERSHEY_DUPLEX
-                        # org
                         org = (50, 200)
-                        # fontScale
                         fontScale = 0.8
-                        # Blue color in BGR
                         color = (255, 255, 255)
-                        # Line thickness of 2 px
                         thickness = 2
                         insertion_img = cv2.putText(insertion_img, footer, org, font, fontScale, color, thickness, cv2.LINE_AA)
                         cv2.imwrite(output_path_count + imgprefix + 'InsertionImg.png', insertion_img * 255)
