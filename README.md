@@ -8,7 +8,9 @@ Attention maps are popular tools of explaining the decisions of convolutional ne
 
 # Demo
 
-<img src="demo_images/peacock_original.png" width="150" height="150">  |   <img src="demo_images/peacock_dnf.gif" width="150" height="150"> | <img src="demo_images/peacock_igos.png" width="150" height="150"> | <img src="demo_images/peacock_gcam.png" width="150" height="150">
+### Example: *Peacock*
+
+<img src="demo_images/peacock_original.png" width="180" height="180">  |   <img src="demo_images/peacock_gcam.png" width="180" height="180"> | <img src="demo_images/peacock_igos.png" width="180" height="180"> | <img src="demo_images/peacock_dnf.gif" width="180" height="180">
 :-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
 Original Image | Ours | I-GOS | Grad-CAM
 
