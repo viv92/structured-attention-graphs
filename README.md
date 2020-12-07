@@ -12,23 +12,23 @@ Attention maps are popular tools of explaining the decisions of convolutional ne
 
 <img src="demo_images/peacock_original.png" width="180" height="180">  |   <img src="demo_images/peacock_gcam.png" width="180" height="180"> | <img src="demo_images/peacock_igos.png" width="180" height="180"> | <img src="demo_images/peacock_dnf.gif" width="180" height="180">
 :-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
-Original Image | Grad-CAM | I-GOS | Ours
+Original Image | Grad-CAM | I-GOS | **Ours**
 
 
 |<img src="demo_images/peacock_sag.png" width="1000" height="300">|
 |:-------------------------:|
-|SAG|
+|**SAG**|
 
 ### Example: *School bus*
 
 <img src="demo_images/schoolbus_original.png" width="180" height="180">  |   <img src="demo_images/schoolbus_gcam.png" width="180" height="180"> | <img src="demo_images/schoolbus_igos.png" width="180" height="180"> | <img src="demo_images/schoolbus_dnf.gif" width="180" height="180">
 :-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
-Original Image | Grad-CAM | I-GOS | Ours
+Original Image | Grad-CAM | I-GOS | **Ours**
 
 
 |<img src="demo_images/schoolbus_sag.png" width="1000" height="300">|
 |:-------------------------:|
-|SAG|
+|**SAG**|
 
 
 ## To run:
