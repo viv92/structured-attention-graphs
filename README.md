@@ -8,10 +8,14 @@ Attention maps are popular tools of explaining the decisions of convolutional ne
 
 # Demo
 
-<img src="demo_images/peacock_original.png" width="200" height="200">  |   <img src="demo_images/peacock_gcam.png" width="200" height="200"> | <img src="demo_images/peacock_igos.png" width="200" height="200"> | <img src="demo_images/peacock_dnf.gif" width="200" height="200">
+<img src="demo_images/peacock_original.png" width="150" height="150">  |   <img src="demo_images/peacock_dnf.gif" width="150" height="150"> | <img src="demo_images/peacock_igos.png" width="150" height="150"> | <img src="demo_images/peacock_gcam.png" width="150" height="150">
+:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
+Original Image | Ours | I-GOS | Grad-CAM
 
-<img src="demo_images/peacock_sag.png" width="1000" height="400">
 
+|<img src="demo_images/peacock_sag.png" width="1000" height="300">|
+|:-------------------------:|
+|SAG|
 
 ## To run:
 `python main_generate_sag.py`
