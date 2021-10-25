@@ -30,6 +30,8 @@ Original Image | Grad-CAM | I-GOS | _**Ours**_
 |:-------------------------:|
 |_**SAG**_|
 
+## Installing dependencies:
+`bash requirements_install.sh`
 
 ## To run:
 `python main_generate_sag.py`
@@ -44,4 +46,5 @@ Original Image | Grad-CAM | I-GOS | _**Ours**_
 - *Images* -- folder consisting of input images for which we build SAGs
 - *Results* -- all results are populated here
 - *GroundTruth1000.txt* -- IMAGENET groundtruth labels
-- *requirements.txt* -- lists all libraries required to run the code
+- *requirements_conda.txt* -- lists all conda libraries dependencies
+- *requirements_pip.txt* -- lists all pip libraries dependencies
