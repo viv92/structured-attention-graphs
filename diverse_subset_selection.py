@@ -194,7 +194,7 @@ def maximal_overlapThresh_set(all_mp, overlap_thresh):
     max_set_length = 0
     n = len(all_mp)
     im = create_intersection_matrix(all_mp)
-    # trigger no overlap dfs
+    # trigger dfs for given overlap threshold 
     for i in range(n):
         refset = [i]
         candidate_set = overlapThresh_dfs(n, im, refset, overlap_thresh)
