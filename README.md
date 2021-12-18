@@ -37,7 +37,7 @@ Original Image | Grad-CAM | I-GOS | _**Ours**_
 `python main_generate_sag.py`
 
 ## Directory description:
-- *combinatorial_search.py* -- functions to perform combinatorial search on a perturbation mask
+- *search.py* -- functions to perform search (beam search or combinatorial search) on a perturbation mask
 - *diverse_subset_selection.py* -- functions to obtain a diverse subset from a set of candidate masks
 - *get_perturbation_mask.py* -- functions to obtain a perturbation mask
 - *patch_deletion_tree.py* -- functions to build a tree by deleting one patch at a time

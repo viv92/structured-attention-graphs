@@ -21,6 +21,7 @@ from textwrap import wrap
 import cv2
 import sys
 from PIL import Image
+from copy import deepcopy
 
 
 def Get_blurred_img(input_img, img_label, model, resize_shape=(224, 224), Gaussian_param = [51, 50], Median_param = 11, blur_type= 'Gaussian', use_cuda = 1):
@@ -374,6 +375,208 @@ def Deletion_Insertion_Comb_withOverlay(max_patches, mask, model, output_path, i
 
     return deletion_loss, insertion_loss, del_mask, showimg_buffer
 
+
+
+def Deletion_Insertion_Comb_Successive(mask, model, output_path, img_ori, blurred_img_ori, category, use_cuda=1, blur_mask=0, outputfig = 1):
+
+    if blur_mask: # invert mask, blur and re-invert
+        mask = (mask - np.min(mask)) / np.max(mask)
+        mask = 1 - mask
+        mask = cv2.GaussianBlur(mask, (51, 51), 50)
+        mask = 1-mask
+
+    blurred_insert = blurred_img_ori.copy()
+    blurred_insert = preprocess_image(blurred_insert, use_cuda, require_grad=False)
+    img = preprocess_image(img_ori, use_cuda, require_grad=False)
+    blurred_img = preprocess_image(blurred_img_ori, use_cuda, require_grad=False)
+    resize_wh = (img.data.shape[2], img.data.shape[3])
+    if use_cuda:
+        upsample = torch.nn.UpsamplingBilinear2d(size=resize_wh).cuda()
+    else:
+        upsample = torch.nn.UpsamplingBilinear2d(size=resize_wh)
+
+    # containers to store curve metrics
+    del_curve = np.array([])
+    insert_curve = np.array([])
+    max_patches = mask.shape[2] * mask.shape[3]
+    xtick = np.arange(0, max_patches, 1)
+    xnum = xtick.shape[0]
+    xtick = xtick.shape[0]+ 10
+
+    # get the ground truth label for the given category
+    f_groundtruth = open('./GroundTruth1000.txt')
+    line_i = f_groundtruth.readlines()[category]
+    f_groundtruth.close()
+
+    # initialize insertion and deletion masks
+    insertion_maskdata = np.zeros(mask.shape)
+    deletion_maskdata = np.ones(mask.shape)
+
+    showimg_buffer = [] # buffer to store figures - we save them only if target_insertion_prob is achieved
+    maskdata = np.ones(mask.shape)
+
+    while not np.all(mask == 1):
+        maskdata, mask, imgratio = add_topMaskPixel(maskdata, mask)
+        # maskdata = mask.copy()
+        maskdata_del = maskdata.astype(np.float32)
+        if use_cuda:
+            Masktop = torch.from_numpy(maskdata_del).cuda()
+        else:
+            Masktop = torch.from_numpy(maskdata_del)
+
+        # Use the mask to perturb the input image - deletion mask.
+        Masktop = Variable(Masktop, requires_grad=False)
+        MasktopLS = upsample(Masktop)
+        Img_topLS = img.mul(MasktopLS) + blurred_img.mul(1 - MasktopLS) # perturbed image
+
+        outputstopLS = torch.nn.Softmax(dim=1)(model(Img_topLS)) # all probabilities
+        deletion_loss = outputstopLS[0, category].data.cpu().numpy().copy() # probability of class under consideration
+        del_mask = MasktopLS.clone()
+        del_curve = np.append(del_curve, deletion_loss)
+
+        # insertion mask
+        maskdata_ins = 1 - maskdata
+        maskdata_ins = maskdata_ins.astype(np.float32)
+        if use_cuda:
+            Masktop = torch.from_numpy(maskdata_ins).cuda()
+        else:
+            Masktop = torch.from_numpy(maskdata_ins)
+        Masktop = Variable(Masktop, requires_grad=False)
+        MasktopLS = upsample(Masktop)
+        Img_topLS = img.mul(MasktopLS) + \
+                    blurred_insert.mul(1 - MasktopLS)
+        outputstopLS = torch.nn.Softmax(dim=1)(model(Img_topLS))
+        insertion_loss = outputstopLS[0, category].data.cpu().numpy().copy()
+        ins_mask = MasktopLS.clone()
+        insert_curve = np.append(insert_curve, insertion_loss)
+
+        # store result images
+        if outputfig == 1:
+            deletion_img = save_new(del_mask, img_ori * 255, blurred_img_ori)
+            insertion_img = save_new(ins_mask, img_ori * 255, blurred_img_ori)
+            showimg_buffer.append((deletion_img, insertion_img, del_curve, insert_curve, output_path, xtick, line_i))
+
+        # flush mask if insertion prob > 0.9
+        if insertion_loss > 0.9:
+            maskdata = np.ones(mask.shape)
+
+    # round decimals
+    deletion_loss = np.around(deletion_loss, decimals=3)
+    insertion_loss = np.around(insertion_loss, decimals=3)
+
+    return deletion_loss, insertion_loss, del_mask, showimg_buffer
+
+
+
+def Deletion_Insertion_Comb_Successive_Corrected(mask, model, output_path, img_ori, blurred_img_ori, category, full_prob, prob_thresh, showimg_buffer, use_cuda=1, blur_mask=0, outputfig = 1):
+    success = False
+
+    if blur_mask: # invert mask, blur and re-invert
+        mask = (mask - np.min(mask)) / np.max(mask)
+        mask = 1 - mask
+        mask = cv2.GaussianBlur(mask, (51, 51), 50)
+        mask = 1-mask
+
+    blurred_insert = blurred_img_ori.copy()
+    blurred_insert = preprocess_image(blurred_insert, use_cuda, require_grad=False)
+    img = preprocess_image(img_ori, use_cuda, require_grad=False)
+    blurred_img = preprocess_image(blurred_img_ori, use_cuda, require_grad=False)
+    resize_wh = (img.data.shape[2], img.data.shape[3])
+    if use_cuda:
+        upsample = torch.nn.UpsamplingBilinear2d(size=resize_wh).cuda()
+    else:
+        upsample = torch.nn.UpsamplingBilinear2d(size=resize_wh)
+
+    # containers to store curve metrics
+    if showimg_buffer == []:
+        del_curve = np.array([])
+        insert_curve = np.array([])
+    else:
+        del_curve = showimg_buffer[-1][2]
+        insert_curve = showimg_buffer[-1][3]
+
+
+    max_patches = mask.shape[2] * mask.shape[3]
+    xtick = np.arange(0, max_patches, 1)
+    xnum = xtick.shape[0]
+    xtick = xtick.shape[0]+ 10
+
+    # get the ground truth label for the given category
+    f_groundtruth = open('./GroundTruth1000.txt')
+    line_i = f_groundtruth.readlines()[category]
+    f_groundtruth.close()
+
+    # initialize insertion and deletion masks
+    insertion_maskdata = np.zeros(mask.shape)
+    deletion_maskdata = np.ones(mask.shape)
+
+    # initialize to avoid reference before assignment error
+    deletion_img = deepcopy(blurred_img_ori)
+    del_mask = deepcopy(mask)
+    del_mask = del_mask.astype(np.float32)
+    if use_cuda:
+        del_mask = torch.from_numpy(del_mask).cuda()
+    else:
+        del_mask = torch.from_numpy(del_mask)
+    del_mask = Variable(del_mask, requires_grad=False)
+    del_mask = upsample(del_mask)
+
+    # showimg_buffer = [] # buffer to store figures - we save them only if target_insertion_prob is achieved
+    maskdata = np.ones(mask.shape)
+
+    while not np.all(mask == 1):
+        maskdata, mask, imgratio = add_topMaskPixel(maskdata, mask)
+        # maskdata = mask.copy()
+        maskdata_del = maskdata.astype(np.float32)
+        if use_cuda:
+            Masktop = torch.from_numpy(maskdata_del).cuda()
+        else:
+            Masktop = torch.from_numpy(maskdata_del)
+
+        # Use the mask to perturb the input image - deletion mask.
+        Masktop = Variable(Masktop, requires_grad=False)
+        MasktopLS = upsample(Masktop)
+        Img_topLS = img.mul(MasktopLS) + blurred_img.mul(1 - MasktopLS) # perturbed image
+
+        outputstopLS = torch.nn.Softmax(dim=1)(model(Img_topLS)) # all probabilities
+        deletion_loss = outputstopLS[0, category].data.cpu().numpy().copy() # probability of class under consideration
+        deletion_loss = deletion_loss / full_prob
+        del_mask = MasktopLS.clone()
+        del_curve = np.append(del_curve, deletion_loss)
+
+        # insertion mask
+        maskdata_ins = 1 - maskdata
+        maskdata_ins = maskdata_ins.astype(np.float32)
+        if use_cuda:
+            Masktop = torch.from_numpy(maskdata_ins).cuda()
+        else:
+            Masktop = torch.from_numpy(maskdata_ins)
+        Masktop = Variable(Masktop, requires_grad=False)
+        MasktopLS = upsample(Masktop)
+        Img_topLS = img.mul(MasktopLS) + \
+                    blurred_insert.mul(1 - MasktopLS)
+        outputstopLS = torch.nn.Softmax(dim=1)(model(Img_topLS))
+        insertion_loss = outputstopLS[0, category].data.cpu().numpy().copy()
+        insertion_loss = insertion_loss / full_prob
+        ins_mask = MasktopLS.clone()
+        insert_curve = np.append(insert_curve, insertion_loss)
+
+        # store result images
+        if outputfig == 1:
+            deletion_img = save_new(del_mask, img_ori * 255, blurred_img_ori)
+            insertion_img = save_new(ins_mask, img_ori * 255, blurred_img_ori)
+            showimg_buffer.append((deletion_img, insertion_img, del_curve, insert_curve, output_path, xtick, line_i))
+
+        # break if insertion prob > 0.9
+        if insertion_loss > prob_thresh:
+            success = True
+            break
+
+    # round decimals
+    # deletion_loss = np.around(deletion_loss, decimals=3)
+    # insertion_loss = np.around(insertion_loss, decimals=3)
+
+    return success, deletion_img, del_mask, showimg_buffer
 
 
 def save_new(mask, img, blurred):

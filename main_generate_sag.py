@@ -1,5 +1,3 @@
-### author: Vivswan Shitole
-
 import  numpy as np
 import itertools
 import random
@@ -20,7 +18,7 @@ from PIL import Image
 
 from utils import *
 from get_perturbation_mask import *
-from combinatorial_search import *
+from search import *
 from diverse_subset_selection import *
 from patch_deletion_tree import *
 
@@ -30,35 +28,53 @@ from patch_deletion_tree import *
 if __name__ == '__main__':
 
     # HYPERPARAMS
-    ups = 30 # recommended values: [1 5 10 20]
-    total_mask_pixels = 20 # recommended values: [30 20 15 10]. Higher value => more candidate mask pixels, but increase in compute cost
-    max_patches = 4 # recommended values: [3-8]. Number of literals in a root conjunction
-    prob_thresh = 0.9 # minimum probability threshold for root conjunctions
-    numRoots = 3 # recommended values: [3-6]. Number of root conjunctions
-    numCategories = 1 # generate SAG for top "N" predicted classes: useful for generating SAG explanations of wrong predictions.
-    node_prob_thresh = 40 # lower bound on confidence score for expansion of node in SAG
+    ups = 30
+    prob_thresh = 0.9 # note that this is prob factor. So we are considering 0.9 * full_image_probability
+    numCategories = 1
+    node_prob_thresh = 40 # minimum score threshold to expand a node in the sag
+
+    beam_width = 3 # suggested values [3,5,10,15]
+    max_num_roots = 10 # upper limit on number of roots obtained via search - suggested values [10,20,30]
+    overlap_thresh = 1 # number of patches allowed to overlap in roots - suggested values [0,1,2]
+    numSuccessors = 15 # should be greater or equal to beam_width - 'q' hyperparam in the paper
+    num_roots_sag = 3 # max number of roots to be displayed in the sag
+
+    input_folder = 'Images'
+
+    maxRootSize = 49 # max number of patches allowed for a root
+
+    # enable cuda
+    use_cuda = 0
+    if torch.cuda.is_available():
+        use_cuda = 1
+    # load DNN model
+    model = load_model_new(use_cuda=use_cuda, model_name='vgg19')
+
+    images_no_roots_found = 0
 
     # traverse input image folder
-    input_path = './Images/'
+    input_path = './'+input_folder+'/'
     dirs = os.listdir(input_path)
+    # dirs = [folder]
     for d in dirs:
         if not os.path.isdir(input_path + d):
             continue
         files = os.listdir(input_path + d)
 
+        total_files = len(files)
+        file_counter = 0
+
         output_path = './Results/' + d + '/'
         if not os.path.isdir(output_path):
             os.makedirs(output_path)
 
-        # enable cuda
-        use_cuda = 0
-        if torch.cuda.is_available():
-            use_cuda = 1
+        pre_existing_result_dirs = os.listdir(output_path)
 
-        # load DNN model
-        model = load_model_new(use_cuda=use_cuda, model_name='vgg19')
+        # start search
+        success_counter = 0
+        explained_images = []
+        img_label = -1
 
-        # start
         for imgname in files:
 
             # current support for jpg and png image formats
@@ -67,6 +83,13 @@ if __name__ == '__main__':
                 print('imgname:', imgname)
                 imgprefix = imgname.split('.')[0]
                 img_label = -1
+
+                # check if this file is already processes (results exist)
+                for existing_dir in pre_existing_result_dirs:
+                    if imgprefix in existing_dir:
+                        print('skipping')
+                        continue
+
 
                 # start time stamp
                 start_time = time.time()
@@ -100,7 +123,7 @@ if __name__ == '__main__':
                                              blurred_img,
                                              model,
                                              category,
-                                             max_iterations=15,
+                                             max_iterations=2,
                                              integ_iter=20,
                                              tv_beta=2,
                                              l1_coeff=0.01 * 100,
@@ -108,27 +131,24 @@ if __name__ == '__main__':
                                              size_init=28,
                                              use_cuda=use_cuda)
 
-                    # filter top pixels of mask
-                    mask, imgratio = filter_topmaxPixel(mask, total_mask_pixels) # note: the mask obtained here is not binary
+                    # get all DISTINCT roots found via beam search
+                    roots_mp = beamSearch_topKSuccessors_roots(mask, beam_width, numSuccessors, img, blurred_img, model, category, prob_thresh, probability, max_num_roots, maxRootSize, use_cuda=use_cuda)
 
-                    # get all combinations of masks - all masks obtained here are binary masks
-                    all_masks = topCombinations(mask, total_mask_pixels, max_patches)
+                    numRoots = len(roots_mp)
+                    print('numRoots_all = ', numRoots)
+                    # get maximal set of non-overlapping roots
+                    maximal_Overlap_mp = []
+                    if numRoots > 0:
+                        maximal_Overlap_mp = maximal_overlapThresh_set(roots_mp, overlap_thresh)
+                    else:
+                        images_no_roots_found += 1
+                    numRoots_Overlap = len(maximal_Overlap_mp)
+                    print('numRoots_Overlap = ', numRoots_Overlap)
 
-                    # get all mask-probability pairs
-                    all_mp = get_all_mp(all_masks, img, blurred_img, model, category, prob_thresh, use_cuda=use_cuda)
-                    if len(all_mp) == 0:
-                        continue
-
-                    # sort masks for diversity
-                    disparity_min_mp = set_filtering(all_mp)
-
-                    # pick only the top "numRoots" diverse masks
-                    # tmp_len = len(disparity_min_mp)
-                    # if tmp_len > numRoots:
-                    #     tmp_len = numRoots
-                    # disparity_min_mp = disparity_min_mp[:tmp_len]
-
-                    #ps = [x[1] for x in disparity_min_mp]
+                    # prune number of roots to be shown in the sag
+                    if numRoots_Overlap > num_roots_sag:
+                        maximal_Overlap_mp = maximal_Overlap_mp[:num_roots_sag]
+                        numRoots_Overlap = num_roots_sag
 
                     # end time stamp
                     end_time = time.time()
@@ -138,10 +158,10 @@ if __name__ == '__main__':
 
                     # deletion insertion on filtered set of masks - just  to generate result figures
                     dnf = ""
-                    for mask, ins_prob in disparity_min_mp:
+                    for mask, ins_prob, rel_prob in maximal_Overlap_mp:
                         output_file_videoimgs = imgprefix + '_'
                         delloss_top2, insloss_top2, minsufexpmask_upsampled, showimg_buffer = Deletion_Insertion_Comb_withOverlay(
-                                                                                               max_patches,
+                                                                                               maxRootSize,
                                                                                                mask,
                                                                                                model,
                                                                                                output_file_videoimgs,
@@ -155,7 +175,7 @@ if __name__ == '__main__':
 
                         output_path_img = output_path + imgprefix + "_timetaken_" + str(time_taken) + "_category_" + str(category_name) + "_probthresh_" + str(prob_thresh) + "/"
                         output_file_perturbation_heatmaps = output_path_img + 'perturbation_'
-                        output_path_count = output_path_img + '_insprob_' + str(ins_prob) + "/"
+                        output_path_count = output_path_img + '_insprob_' + str(ins_prob) + '_relprob_' + str(rel_prob) + "/"
                         outvideo_path = output_path_count + 'VIDEO/'
 
                         # create MDNF expression
@@ -183,18 +203,7 @@ if __name__ == '__main__':
                         # save perturbation minsufexp heatmaps
                         output_file_perturbationminsufexp_heatmaps = output_path_count + imgprefix + '_perturbationminsufexp_'
                         save_perturbation_heatmap(output_file_perturbationminsufexp_heatmaps, minsufexpmask_upsampled, img * 255, blurred_img, blur_mask=0)
-
-                        # write insertion image with probability score
                         insertion_img = cv2.cvtColor(insertion_img, cv2.COLOR_RGB2BGR)
-                        # add score footer
-                        prob_score = np.around(ins_prob, decimals=3)
-                        footer = "p: " + str(prob_score)
-                        font = cv2.FONT_HERSHEY_DUPLEX
-                        org = (50, 200)
-                        fontScale = 0.8
-                        color = (255, 255, 255)
-                        thickness = 2
-                        insertion_img = cv2.putText(insertion_img, footer, org, font, fontScale, color, thickness, cv2.LINE_AA)
                         cv2.imwrite(output_path_count + imgprefix + 'InsertionImg.png', insertion_img * 255)
 
                         # write root conjunctions
@@ -218,7 +227,7 @@ if __name__ == '__main__':
                     img_ori = cv2.cvtColor(img_ori, cv2.COLOR_RGB2BGR)
 
                     # create patchImages folder if not exists
-                    current_patchImages_path = output_path_img + 'SAG_PatchImages_'+str(numRoots)+'roots'
+                    current_patchImages_path = output_path_img + 'SAG_PatchImages_'+str(numRoots_Overlap)+'roots'
                     if not os.path.isdir(current_patchImages_path):
                         os.makedirs(current_patchImages_path)
 
@@ -229,21 +238,21 @@ if __name__ == '__main__':
                     conjuncts = get_conjuncts_set(dnf)
 
                     # prune conjunctions to required number of roots in SAG
-                    if len(conjuncts) > numRoots:
-                        conjuncts = conjuncts[:numRoots]
+                    if len(conjuncts) > numRoots_Overlap:
+                        conjuncts = conjuncts[:numRoots_Overlap]
 
                     # build tree
-                    sag_tree = build_tree(conjuncts, ups, img_ori, blurred_img, model, category, current_patchImages_path, node_prob_thresh)
+                    sag_tree = build_tree(conjuncts, ups, img_ori, blurred_img, model, category, current_patchImages_path, node_prob_thresh, probability)
 
                     # book-keeping and save generated result files
-                    f = output_path_img + 'SAG_'+str(numRoots)+'roots.dot'
+                    f = output_path_img + 'SAG_'+str(numRoots_Overlap)+'roots.dot'
                     sag_tree.write(f)
                     img = pgv.AGraph(f)
                     img.layout(prog='dot')
-                    f2 = output_path_img + 'SAG_dag_'+str(numRoots)+'roots.png'
+                    f2 = output_path_img + 'SAG_dag_'+str(numRoots_Overlap)+'roots.png'
                     img.draw(f2)
                     img.close()
-                    f3 = output_path_img + 'SAG_final_'+str(numRoots)+'roots.png'
+                    f3 = output_path_img + 'SAG_final_'+str(numRoots_Overlap)+'roots.png'
                     img_tree = cv2.imread(f2)
                     h,w,c = img_tree.shape
                     hp = h
@@ -262,3 +271,7 @@ if __name__ == '__main__':
                     img_sag_final = np.concatenate((img_ori_padded, img_tree), axis=1)
                     # save generated sag image
                     cv2.imwrite(f3, img_sag_final)
+
+                file_counter += 1
+                print('files processed: {}/{}'.format(file_counter, total_files))
+                print('images with no roots found: ', images_no_roots_found)

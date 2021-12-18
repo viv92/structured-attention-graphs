@@ -93,12 +93,30 @@ def topmaxPixel(HattMap, thre_num):
     OutHattMap = 1 - OutHattMap
     return OutHattMap, img_ratio
 
+def add_topMaskPixel(current_mask, original_mask):
+    ii = np.unravel_index(np.argsort(original_mask.ravel())[0], original_mask.shape)
+    current_mask[ii] = 0
+    original_mask[ii] = 1
+    img_ratio = np.sum(current_mask) / current_mask.size
+    return current_mask, original_mask, img_ratio
+
 def filter_topmaxPixel(HattMap, thre_num):
     ii = np.unravel_index(np.argsort(HattMap.ravel())[: thre_num], HattMap.shape)
     OutHattMap = np.ones(HattMap.shape)
     OutHattMap[ii] = HattMap[ii]
     img_ratio = np.sum(OutHattMap) / OutHattMap.size
     return OutHattMap, img_ratio
+
+def write_video(inputpath, outputname, img_num, fps = 10):
+    fourcc = cv2.VideoWriter_fourcc('M','J','P','G')
+    videoWriter = cv2.VideoWriter(outputname, fourcc, fps, (1000, 1000))
+    for i in range(img_num):
+
+        img_no = i+1
+        #print(inputpath+'video'+str(img_no) +'.jpg')
+        img12 = cv2.imread(inputpath+'video'+str(img_no) +'.jpg',1)
+        videoWriter.write(img12)
+    videoWriter.release()
 
 
 def save_perturbation_heatmap(output_path, mask, img, blurred, blur_mask=0):
@@ -109,16 +127,11 @@ def save_perturbation_heatmap(output_path, mask, img, blurred, blur_mask=0):
         mask = mask / (np.max(mask)-np.min(mask))
     mask = 1 - mask
 
-    sigfun = lambda x: 1.0/(1+exp(-5*(x-0.3)))
-    sigop = np.vectorize(sigfun)
-    mask = sigop(mask)
-    mask = mask * 0.5 # for lighter mask (transparency)
-
     if blur_mask:
         mask = cv2.GaussianBlur(mask, (11, 11), 10)
         mask = np.expand_dims(mask, axis=2)
 
-    heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+    heatmap = np.uint8(255 * mask)
     heatmap = np.float32(heatmap) / 255
     img = np.float32(img) / 255
     perturbated = np.multiply(1 - mask, img) + np.multiply(mask, blurred)

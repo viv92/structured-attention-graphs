@@ -36,7 +36,7 @@ def get_edge_mask_red(mask, canny_param, intensity, kernel_size):
     return upsampled_mask_newPatch_edge
 
 
-def create_node_image(parent_chain, index, edgepatch, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path):
+def create_node_image(parent_chain, index, edgepatch, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, full_image_probability):
     width, height, channels = img_ori.shape
     resize_wh = (width, height)
 
@@ -103,6 +103,9 @@ def create_node_image(parent_chain, index, edgepatch, parent_prob, ups, img_ori,
         ins_prob = prob_vector[0, category].data.cpu().numpy()
     else:
         ins_prob = prob_vector[0, category].data.numpy()
+
+    # convert ins_prob to relative_prob
+    ins_prob = ins_prob / full_image_probability
 
     #create edge patch image
     if edgepatch_flag:
@@ -265,7 +268,7 @@ def get_node_bg_color(ins_prob, basecolor):
 incremental_uid = 0
 
 # function to create node and add it to the tree
-def add_lattice_node(conj, g, edgepatch, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, isleaf):
+def add_lattice_node(conj, g, edgepatch, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, isleaf, full_image_probability):
     global incremental_uid
     # using global incremental uid
     incremental_uid += 1
@@ -280,7 +283,7 @@ def add_lattice_node(conj, g, edgepatch, parent_prob, ups, img_ori, blurred_img_
     shape = 'box'
     style = 'filled'
     penwidth=2
-    imagepath, ins_prob = create_node_image(parent_chain, dummy_index, edgepatch, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path)
+    imagepath, ins_prob = create_node_image(parent_chain, dummy_index, edgepatch, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, full_image_probability)
     # get node background color
     node_bg_color = get_node_bg_color(ins_prob, 'snow')
     fillcolor = node_bg_color
@@ -307,20 +310,20 @@ def add_lattice_node(conj, g, edgepatch, parent_prob, ups, img_ori, blurred_img_
     return uid, imagepath, ins_prob
 
 
-def recursive_lattice(conjuncts, parent_uid, g, depth, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, node_prob_thresh):
+def recursive_lattice(conjuncts, parent_uid, g, depth, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, node_prob_thresh, full_image_probability):
     # iterate over leaves
     for conj, edgepatch in conjuncts:
         # add node for current leaf
-        uid, imagepath, node_prob = add_lattice_node(conj, g, edgepatch, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, isleaf=False)
+        uid, imagepath, node_prob = add_lattice_node(conj, g, edgepatch, parent_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, False, full_image_probability)
         g.add_edge(parent_uid, uid, color='white')
         # build rest of the lattice originating from current leaf recursively
         if node_prob > node_prob_thresh:
             subconjlist = get_subconjuncts(conj)
             if len(subconjlist) > 0:
-                recursive_lattice(subconjlist, uid, g, depth+1, node_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, node_prob_thresh)
+                recursive_lattice(subconjlist, uid, g, depth+1, node_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, node_prob_thresh, full_image_probability)
 
 
-def build_tree(conjuncts, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, node_prob_thresh):
+def build_tree(conjuncts, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, node_prob_thresh, full_image_probability):
     # initialize graph
     g = pgv.AGraph(directed=True, strict=True, overlap='false', bgcolor='black')
     edgepatch = ""
@@ -328,10 +331,10 @@ def build_tree(conjuncts, ups, img_ori, blurred_img_ori, model, category, curren
     # iterate over leaves
     for conj in conjuncts:
         # add node for current leaf
-        uid, _, node_prob = add_lattice_node(conj, g, edgepatch, 100, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, isleaf=True)
+        uid, _, node_prob = add_lattice_node(conj, g, edgepatch, 100, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, True, full_image_probability)
         # build rest of the lattice originating from current leaf recursively
         if node_prob > node_prob_thresh:
             subconjlist = get_subconjuncts(conj)
             if len(subconjlist) > 0:
-                recursive_lattice(subconjlist, uid, g, depth+1, node_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, node_prob_thresh)
+                recursive_lattice(subconjlist, uid, g, depth+1, node_prob, ups, img_ori, blurred_img_ori, model, category, current_patchImages_path, node_prob_thresh, full_image_probability)
     return g
