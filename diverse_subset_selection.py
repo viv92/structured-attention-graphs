@@ -156,3 +156,52 @@ def set_filtering(all_mp):
         best_mp = all_mp[best_mp_index]
         disparity_min_set.append((best_mp[0], best_mp[1]))
     return disparity_min_set
+
+
+def overlapThresh_dfs(n, im, refset, overlap_thresh):
+    noOverlap_indices = []
+    maximal_refset = []
+    maximal_refset_length = 0
+    index = refset[-1]
+    for j in range(index+1,n): # consider only upper triangular elements as symmetric matrix
+            # check for no overlap with refset
+            valid = True
+            for k in refset:
+                if (im[j][k] > overlap_thresh):
+                    valid = False
+                    break
+            if valid:
+                noOverlap_indices.append(j)
+    # base case
+    if noOverlap_indices == []:
+        return refset
+
+    # trigger dfs for new indices
+    for j in noOverlap_indices:
+        candidate_refset = overlapThresh_dfs(n, im, refset + [j], overlap_thresh)
+        # save maximal refset
+        candidate_refset_length = len(candidate_refset)
+        if maximal_refset_length < candidate_refset_length:
+            maximal_refset_length = candidate_refset_length
+            maximal_refset = candidate_refset
+    return maximal_refset
+
+
+# function to return maximal set of masks, all of which have zero overlap
+def maximal_overlapThresh_set(all_mp, overlap_thresh):
+    ans_mp = []
+    max_set = []
+    max_set_length = 0
+    n = len(all_mp)
+    im = create_intersection_matrix(all_mp)
+    # trigger no overlap dfs
+    for i in range(n):
+        refset = [i]
+        candidate_set = overlapThresh_dfs(n, im, refset, overlap_thresh)
+        candidate_set_length = len(candidate_set)
+        if max_set_length < candidate_set_length:
+            max_set_length = candidate_set_length
+            max_set = candidate_set
+    for index in max_set:
+        ans_mp.append(all_mp[index])
+    return ans_mp
